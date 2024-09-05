@@ -1,8 +1,9 @@
 import {User} from '../models/user.model.js'
 import bcryptjs from 'bcryptjs';
+import crypto from 'crypto'
 import { generateVerficationCode } from '../utils/generateVerificationCode.js';
 import { generateTokenAndSetCookie } from '../utils/generateTokenAndSetCookie.js';
-import { sendVerificationEmail } from '../mail/emails.js';
+import {sendPasswordResetEmail, sendVerificationEmail } from '../mail/emails.js';
 
 // Signup Controller
 export const signup = async (req, res) => {
@@ -135,6 +136,50 @@ export const verifyEmail = async (req, res) => {
         });
     } catch (error) {
         // Handle any errors and send a failure response
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// Forgot Password Controller
+export const forgotPassword = async (req, res) => {
+    const { email } = req.body;  // Get the email from the request body
+
+    try {
+        // Find the user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Generate a secure reset token using crypto
+        const resetToken = crypto.randomBytes(20).toString('hex');
+
+        // Set the expiration time for the reset token (1 hour from now)
+        const resetTokenExpiresAt = Date.now() + 1 * 60 * 60 * 1000;  // Corrected from Data.now()
+
+        // Update user with the reset token and expiration time
+        user.resetPasswordToken = resetToken;
+        user.resetPasswordExpiresAt = resetTokenExpiresAt;
+
+        // Save the user with the new reset token
+        await user.save();
+
+        // Send password reset email with the reset token link
+        await sendPasswordResetEmail(
+            user.email,
+            `${process.env.CLIENT_URL}/reset-password/${resetToken}`
+        );
+
+        // Respond with a success message
+        res.status(200).json({
+            success: true,
+            message: "Password reset link sent to your email"
+        });
+    } catch (error) {
+        // Handle any errors and respond with an error message
         res.status(400).json({ success: false, message: error.message });
     }
 };
