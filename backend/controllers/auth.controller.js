@@ -3,7 +3,7 @@ import bcryptjs from 'bcryptjs';
 import crypto from 'crypto'
 import { generateVerficationCode } from '../utils/generateVerificationCode.js';
 import { generateTokenAndSetCookie } from '../utils/generateTokenAndSetCookie.js';
-import {sendPasswordResetEmail, sendVerificationEmail } from '../mail/emails.js';
+import {sendPasswordResetEmail, sendRestSuccessEmail, sendVerificationEmail } from '../mail/emails.js';
 
 // Signup Controller
 export const signup = async (req, res) => {
@@ -183,3 +183,30 @@ export const forgotPassword = async (req, res) => {
         res.status(400).json({ success: false, message: error.message });
     }
 };
+
+export const resetPassword = async (req,res)=>{
+    try {
+        const {token} = req.params
+        const {password} = req.body;
+        const user = await User.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpiresAt: {$gt:Date.now()}
+        })
+        if(!user){
+            return res.status(400).json({success:false, message:"Invalid or expired reset token"})
+        }
+        // update password
+        const hashPassword = await bcryptjs.hash(password,12)
+        user.password = hashPassword,
+        user.resetPasswordToken = undefined,
+        user.resetPasswordExpiresAt= undefined,
+        await user.save(),
+
+        await sendRestSuccessEmail(user.email)
+        res.status(200).json({success:true, message:"Password reset successful"})
+
+    } catch (error) {
+        console.log("Error in reseting password", error)
+        res.status(400).json({ success: false, message: error.message });
+    }
+}
